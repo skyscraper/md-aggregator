@@ -12,6 +12,7 @@
 
 (def symbols (atom [:ETH :BTC]))
 (def trade-channels (atom {}))
+(def signal (java.util.concurrent.CountDownLatch. 1))
 
 (defn start-trade-consumers [trade-channels]
   (doseq [[sym ch] trade-channels]
@@ -28,5 +29,6 @@
   (reset! trade-channels (generate-channel-map @symbols))
   (start-trade-consumers @trade-channels)
   (doseq [init inits]
-    (init @trade-channels)))
+    (init @trade-channels))
+  (.await signal))
 
