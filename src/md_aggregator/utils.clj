@@ -1,6 +1,6 @@
 (ns md-aggregator.utils
   (:require [clojure.core.async :refer [<! chan go-loop timeout]]
-            [clojure.string :refer [upper-case]]
+            [clojure.string :refer [lower-case upper-case]]
             [java-time :refer [instant zoned-date-time]]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]))
@@ -21,18 +21,18 @@
    {}
    symbols))
 
-;; maps
-(defn re-key [x rename-fn]
+;; exchange specific map
+(defn info-map [existing rename-fn trade-channels]
   (reduce-kv
-   (fn [m k v] (assoc m (rename-fn k) v))
-   {}
-   x))
-
-(defn key-mapping [x key-fn value-fn]
-  (reduce-kv
-   (fn [m k _] (assoc m (key-fn k) (value-fn k)))
-   {}
-   x))
+   (fn [acc sym ch]
+     (assoc
+      acc
+      (rename-fn sym)
+      {:channel ch
+       :coin-tag (str coin sym)
+       :price-gauge (keyword (str (lower-case (name sym)) "-price"))}))
+   existing
+   trade-channels))
 
 ;; time
 (defn epoch [dt-str]
@@ -46,9 +46,10 @@
       (recur))))
 
 ;; trade stats
-(defn trade-stats [price size time tags coin-tag]
+(defn trade-stats [{:keys [price size time]} tags {:keys [coin-tag price-gauge]}]
   (let [trade-delay (- (System/currentTimeMillis) time)
         amt (* price size)]
     (statsd/distribution :trade-delay trade-delay tags)
     (statsd/count :trade 1 tags)
-    (statsd/count :notional amt (conj tags coin-tag))))
+    (statsd/count :notional amt (conj tags coin-tag))
+    (statsd/gauge price-gauge price tags)))

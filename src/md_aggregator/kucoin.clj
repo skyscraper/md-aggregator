@@ -5,17 +5,16 @@
             [clojure.core.async :refer [<! put! go-loop timeout]]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [coin re-key key-mapping trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://api-futures.kucoin.com")
 (def token-ep "/api/v1/bullet-public")
 (def exch :kucoin)
 (def tags [(str "exch" exch)])
-(def ping {:type :ping})
+(def info {})
 (def connection (atom nil))
-(def trade-channels (atom {}))
-(def coin-tags (atom {}))
+(def ping {:type :ping})
 
 (defn on-connect [conn interval]
   (go-loop []
@@ -38,16 +37,16 @@
     (condp = (keyword type)
       :message (when (= :match (keyword subject))
                  (let [{:keys [symbol side matchSize price time]} data
-                       kw-sym (keyword symbol)]
-                   (when-let [c (kw-sym @trade-channels)]
-                     (let [updated {:price (double price)
-                                    :size (double matchSize)
-                                    :side (keyword side)
-                                    :time (long (/ time 1e5))
-                                    :source exch}]
-                       (put! c updated)
-                       (trade-stats (:price updated) (:size updated) (:time updated)
-                                    tags (kw-sym @coin-tags))))))
+                       kw-sym (keyword symbol)
+                       {:keys [channel] :as meta-info} (kw-sym info)]
+                   (when channel
+                     (let [trade {:price (double price)
+                                  :size (double matchSize)
+                                  :side (keyword side)
+                                  :time (long (/ time 1e5))
+                                  :source exch}]
+                       (put! channel trade)
+                       (trade-stats trade tags meta-info)))))
       :welcome (log/info "kucoin token accepted")
       :ack (log/info "kucoin subscription acknowledged")
       (log/warn "unhandled kucoin message:" payload))))
@@ -55,7 +54,7 @@
 (defn rename [k]
   (keyword (str (name (if (= :BTC k) :XBT k)) "USDTM")))
 
-(defn init [t-channels]
+(defn init [trade-channels]
   (let [{:keys [token instanceServers]} (-> (str api-url token-ep)
                                             http/post
                                             deref
@@ -67,10 +66,9 @@
         conn @(http/websocket-client
                (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
                {:epoll? true})]
-    (reset! trade-channels (re-key t-channels rename))
-    (reset! coin-tags (key-mapping t-channels rename #(str coin %)))
+    (alter-var-root #'info info-map rename trade-channels)
     (reset! connection conn)
     (s/consume handle conn)
     (on-connect conn pingInterval)
-    (subscribe conn (keys @trade-channels))))
+    (subscribe conn (keys info))))
 

@@ -5,43 +5,41 @@
             [clojure.string :refer [join lower-case]]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [coin re-key key-mapping trade-stats]]))
+            [md-aggregator.utils :refer [info-map trade-stats]]
+            [taoensso.timbre :as log]))
 
 ;; TODO: stream will get disconnected at 24h mark, need to handle this
 
 (def url "wss://fstream.binance.com")
 (def exch :binance)
 (def tags [(str "exch" exch)])
+(def info {})
 (def connection (atom nil))
-(def trade-channels (atom {}))
-(def coin-tags (atom {}))
 
 (defn handle [raw]
-  (let [{:keys [s p q T m]} (:data (parse-string raw true))]
+  (let [{:keys [s p q T m] :as payload} (:data (parse-string raw true))]
     (statsd/count :ws-msg 1 tags)
-    (when s
-      (let [sym (keyword s)]
-        (when-let [c (sym @trade-channels)]
-          (let [price (Double/parseDouble p)
-                size (Double/parseDouble q)]
-            (put! c {:price price
-                     :size size
-                     :side (if m :sell :buy)
-                     :time T
-                     :source exch})
-            (trade-stats price size T tags (sym @coin-tags))))))))
+    (if s
+      (let [{:keys [channel] :as meta-info} ((keyword s) info)
+            trade {:price (Double/parseDouble p)
+                   :size (Double/parseDouble q)
+                   :side (if m :sell :buy)
+                   :time T
+                   :source exch}]
+        (put! channel trade)
+        (trade-stats trade tags meta-info))
+      (log/warn "unhandled binance message:" payload))))
 
 (defn rename [k]
   (keyword (str (name k) "USDT")))
 
-(defn init [t-channels]
-  (reset! trade-channels (re-key t-channels rename))
-  (reset! coin-tags (key-mapping t-channels rename #(str coin %)))
+(defn init [trade-channels]
+  (alter-var-root #'info info-map rename trade-channels)
   (let [full-url
         (str
          url
          "/stream?streams="
-         (join "/" (map #(str (lower-case (name %)) "@trade") (keys @trade-channels))))
+         (join "/" (map #(str (lower-case (name %)) "@trade") (keys info))))
         conn @(http/websocket-client full-url {:epoll? true})]
     (reset! connection conn)
     (s/consume handle conn)))
