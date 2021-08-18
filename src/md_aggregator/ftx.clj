@@ -48,7 +48,8 @@
   (keyword (str (name k) "-PERP")))
 
 (defn init [trade-channels]
-  (let [conn @(http/websocket-client url {:epoll? true})]
+  (let [conn @(http/websocket-client url {:epoll? true
+                                          :max-frame-payload 131072})]
     (alter-var-root #'info info-map rename trade-channels)
     (reset! connection conn)
     (s/consume handle conn)

@@ -64,6 +64,7 @@
 
 (defn init [trade-channels]
   (let [conn @(http/websocket-client url {:epoll? true
+                                          :max-frame-payload 131072
                                           :compression? true
                                           :heartbeats {:send-after-idle 3e4
                                                        :payload ping
