@@ -8,10 +8,12 @@
             [md-aggregator.okex :as okex]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [generate-channel-map]]
+            [nrepl.server :refer [start-server]]
             [taoensso.timbre :as log]))
 
 (def symbols (atom [:ETH :BTC]))
 (def trade-channels (atom {}))
+(def nrepl-server (atom nil))
 (def signal (java.util.concurrent.CountDownLatch. 1))
 
 (defn start-trade-consumers [trade-channels]
@@ -26,10 +28,12 @@
 
 (defn -main [& args]
   (log/swap-config! assoc :appenders {:spit (log/spit-appender {:fname "./logs/app.log"})})
+  (log/set-level! :info)
   (statsd/reset-statsd!)
   (reset! trade-channels (generate-channel-map @symbols))
   (start-trade-consumers @trade-channels)
   (doseq [init inits]
     (init @trade-channels))
+  (reset! nrepl-server (start-server :port 7888))
   (.await signal))
 

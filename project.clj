@@ -11,6 +11,7 @@
                  [com.datadoghq/java-dogstatsd-client "2.13.0"]
                  [com.taoensso/timbre "5.1.2"]
                  [environ "1.2.0"]
+                 [nrepl "0.8.3"]
                  [org.clojure/clojure "1.10.3"]
                  [org.clojure/core.async "1.3.618"]]
   :repl-options {:init-ns md-aggregator.core}
