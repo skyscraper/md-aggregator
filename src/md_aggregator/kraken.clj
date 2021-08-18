@@ -7,6 +7,7 @@
             [md-aggregator.utils :refer [coin re-key key-mapping trade-stats]]
             [taoensso.timbre :as log]))
 
+
 (def url "wss://futures.kraken.com/ws/v1")
 (def exch :kraken)
 (def tags [(str "exch" exch)])
@@ -32,7 +33,7 @@
                                   kw-product (keyword product_id)]
                               (when-let [c (kw-product @trade-channels)]
                                 (let [updated {:price (double price)
-                                               :size (double (/ qty price)) ;; denominated in USD
+                                               :size (double (/ qty price)) ;; inverse future
                                                :side (keyword side)
                                                :time time
                                                :liquidation (if (kw-type liq-types) true false)

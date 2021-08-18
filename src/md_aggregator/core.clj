@@ -19,9 +19,10 @@
     (go-loop []
       (let [x (<! ch)]
         ;; todo: send to appropriate channel based on symbol
+        (log/info x)
         (recur)))))
 
-(def inits [binance/init ftx/init huobi/init kraken/init okex/init])
+(def inits [md-aggregator.kucoin/init])
 
 (defn -main [& args]
   (log/swap-config! assoc :appenders {:spit (log/spit-appender {:fname "./logs/app.log"})})
