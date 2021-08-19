@@ -33,14 +33,22 @@
 (defn rename [k]
   (keyword (str (name k) "USDT")))
 
+(defn full-url []
+  (str
+   url
+   "/stream?streams="
+   (join "/" (map #(str (lower-case (name %)) "@trade") (keys info)))))
+
+(defn ws-conn []
+  (http/websocket-client (full-url) {:epoll? true}))
+
+(defn connect! []
+  (let [conn @(ws-conn)]
+    (reset! connection conn)
+    (s/consume handle conn)
+    (s/on-closed conn connect!)))
+
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (let [full-url
-        (str
-         url
-         "/stream?streams="
-         (join "/" (map #(str (lower-case (name %)) "@trade") (keys info))))
-        conn @(http/websocket-client full-url {:epoll? true})]
-    (reset! connection conn)
-    (s/consume handle conn)))
+  (connect!))
 

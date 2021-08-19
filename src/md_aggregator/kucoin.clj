@@ -54,7 +54,12 @@
 (defn rename [k]
   (keyword (str (name (if (= :BTC k) :XBT k)) "USDTM")))
 
-(defn init [trade-channels]
+(defn ws-conn [endpoint token]
+  (http/websocket-client
+   (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
+   {:epoll? true}))
+
+(defn connect! []
   (let [{:keys [token instanceServers]} (-> (str api-url token-ep)
                                             http/post
                                             deref
@@ -63,12 +68,15 @@
                                             (parse-string true)
                                             :data)
         {:keys [endpoint pingInterval]} (first instanceServers)
-        conn @(http/websocket-client
-               (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
-               {:epoll? true})]
-    (alter-var-root #'info info-map rename trade-channels)
+        conn @(ws-conn endpoint token)]
+    (log/info "connecting to" (name exch) "...")
     (reset! connection conn)
     (s/consume handle conn)
     (on-connect conn pingInterval)
-    (subscribe conn (keys info))))
+    (subscribe conn (keys info))
+    (s/on-closed conn connect!)))
+
+(defn init [trade-channels]
+  (alter-var-root #'info info-map rename trade-channels)
+  (connect!))
 

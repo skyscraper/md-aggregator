@@ -45,12 +45,20 @@
 (defn rename [k]
   (keyword (str "PI_" (name (if (= :BTC k) :XBT k)) "USD")))
 
-(defn init [trade-channels]
-  (let [conn @(http/websocket-client url {:epoll? true
-                                          :heartbeats {:send-after-idle 6e4
-                                                       :timeout 6e4}})]
-    (alter-var-root #'info info-map rename trade-channels)
+(defn ws-conn []
+  (http/websocket-client url {:epoll? true
+                              :heartbeats {:send-after-idle 6e4
+                                           :timeout 6e4}}))
+
+(defn connect! []
+  (let [conn @(ws-conn)]
+    (log/info "connecting to" (name exch) "...")
     (reset! connection conn)
     (s/consume handle conn)
-    (subscribe conn (keys info))))
+    (subscribe conn (keys info))
+    (s/on-closed conn connect!)))
+
+(defn init [trade-channels]
+  (alter-var-root #'info info-map rename trade-channels)
+  (connect!))
 

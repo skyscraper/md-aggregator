@@ -43,11 +43,19 @@
 (defn rename [k]
   (keyword (format base (str (name k) "-USDT"))))
 
-(defn init [trade-channels]
-  (let [conn @(http/websocket-client url {:epoll? true
-                                          :max-frame-payload 131072})]
-    (alter-var-root #'info info-map rename trade-channels)
+(defn ws-conn []
+  (http/websocket-client url {:epoll? true
+                              :max-frame-payload 131072}))
+
+(defn connect! []
+  (let [conn @(ws-conn)]
+    (log/info "connecting to" (name exch) "...")
     (reset! connection conn)
     (s/consume handle conn)
-    (subscribe conn (keys info))))
+    (subscribe conn (keys info))
+    (s/on-closed conn connect!)))
+
+(defn init [trade-channels]
+  (alter-var-root #'info info-map rename trade-channels)
+  (connect!))
 
