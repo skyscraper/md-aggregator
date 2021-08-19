@@ -44,6 +44,7 @@
 
 (defn connect! []
   (let [conn @(ws-conn)]
+    (log/info "connecting to" (name exch) "...")
     (reset! connection conn)
     (s/consume handle conn)
     (s/on-closed conn connect!)))

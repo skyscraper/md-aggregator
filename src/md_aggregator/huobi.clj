@@ -10,7 +10,7 @@
             [taoensso.timbre :as log])
   (:import (java.util.zip GZIPInputStream)))
 
-(def url "wss://api.hbdm.com/linear-swap-ws")
+(def url "wss://api.hbdm.vn/linear-swap-ws")
 (def exch :huobi)
 (def tags [(str "exch" exch)])
 (def info {})
