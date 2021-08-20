@@ -1,6 +1,6 @@
 (ns md-aggregator.ftx
   (:require [aleph.http :as http]
-            [clojure.core.async :refer [put!]]
+            [clojure.core.async :refer [>! go]]
             [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
@@ -26,12 +26,13 @@
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword type)
       :update (let [{:keys [channel] :as meta-info} ((keyword market) info)]
-                (doseq [x data
-                        :let [trade (-> (update x :time epoch)
-                                        (update :side keyword)
-                                        (assoc :source exch))]]
-                  (put! channel trade)
-                  (trade-stats trade tags meta-info)))
+                (go
+                  (doseq [x data
+                          :let [trade (-> (update x :time epoch)
+                                          (update :side keyword)
+                                          (assoc :source exch))]]
+                    (>! channel trade)
+                    (trade-stats trade tags meta-info))))
       :partial (log/warn (format "received partial event: %s" payload)) ;; not currently implemented
       :info (do (log/info (format "ftx info: %s %s" code msg))
                 (when (= code 20001)

@@ -6,7 +6,8 @@
             [md-aggregator.statsd :as statsd]))
 
 ;; constants
-(def coin "coin")
+(def coin-str "coin")
+(def side-str "side")
 
 ;; formatting
 (defn uc-kw
@@ -29,7 +30,7 @@
       acc
       (rename-fn sym)
       {:channel ch
-       :coin-tag (str coin sym)
+       :coin-tag (str coin-str sym)
        :price-gauge (keyword (str (lower-case (name sym)) "-price"))}))
    existing
    trade-channels))
@@ -46,10 +47,10 @@
       (recur))))
 
 ;; trade stats
-(defn trade-stats [{:keys [price size time]} tags {:keys [coin-tag price-gauge]}]
+(defn trade-stats [{:keys [price size time side]} tags {:keys [coin-tag price-gauge]}]
   (let [trade-delay (- (System/currentTimeMillis) time)
         amt (* price size)]
     (statsd/distribution :trade-delay trade-delay tags)
     (statsd/count :trade 1 tags)
-    (statsd/count :notional amt (conj tags coin-tag))
+    (statsd/count :notional amt (conj tags coin-tag (str side-str side)))
     (statsd/gauge price-gauge price tags)))

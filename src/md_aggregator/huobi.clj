@@ -1,7 +1,7 @@
 (ns md-aggregator.huobi
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [clojure.core.async :refer [put!]]
+            [clojure.core.async :refer [>! go]]
             [clojure.java.io :refer [reader]]
             [jsonista.core :as json]
             [manifold.deferred :as d]
@@ -30,21 +30,21 @@
       (cond
         (some? ch) (let [{:keys [channel] :as meta-info} ((keyword ch) info)]
                      (when channel
-                       (doseq [{:keys [price quantity direction ts]} (:data tick)
-                               :let [trade {:price (double price)
-                                            :size (double quantity)
-                                            :side (keyword direction)
-                                            :time ts
-                                            :source exch}]]
-                         (put! channel trade)
-                         (trade-stats trade tags meta-info))))
+                       (go
+                        (doseq [{:keys [price quantity direction ts]} (:data tick)
+                                :let [trade {:price (double price)
+                                             :size (double quantity)
+                                             :side (keyword direction)
+                                             :time ts
+                                             :source exch}]]
+                          (>! channel trade)
+                          (trade-stats trade tags meta-info)))))
         (some? subbed) (log/info subbed "subscription status:" status)
         (some? ping) (s/put! @connection (json/write-value-as-string {:pong ping}))
         :else (log/warn "unhandled huobi message: " payload)))))
 
 (defn rename [k]
   (keyword (format base (str (name k) "-USDT"))))
-
 
 (declare connect!)
 

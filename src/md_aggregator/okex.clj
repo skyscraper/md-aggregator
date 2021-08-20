@@ -1,7 +1,7 @@
 (ns md-aggregator.okex
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [clojure.core.async :refer [put!]]
+            [clojure.core.async :refer [>! go]]
             [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
@@ -35,14 +35,15 @@
                       cts (kw-inst @ct-size)
                       {:keys [channel] :as meta-info} (kw-inst info)]
                   (when channel
-                    (doseq [{:keys [px sz side ts]} data
-                            :let [trade {:price (Double/parseDouble px)
-                                         :size (* (Double/parseDouble sz) cts)
-                                         :side (keyword side)
-                                         :time (Long/parseLong ts)
-                                         :source exch}]]
-                      (put! channel trade)
-                      (trade-stats trade tags meta-info)))))
+                    (go
+                      (doseq [{:keys [px sz side ts]} data
+                              :let [trade {:price (Double/parseDouble px)
+                                           :size (* (Double/parseDouble sz) cts)
+                                           :side (keyword side)
+                                           :time (Long/parseLong ts)
+                                           :source exch}]]
+                        (>! channel trade)
+                        (trade-stats trade tags meta-info))))))
       (log/warn (str "unhandled okex event: " payload)))))
 
 (defn reset-ct-sizes! []
