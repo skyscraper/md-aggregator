@@ -1,8 +1,8 @@
 (ns md-aggregator.okex
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [put!]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -21,11 +21,12 @@
 
 (defn subscribe [conn instruments]
   (let [base {:channel :trades}]
-    (s/put! conn (generate-string
+    (s/put! conn (json/write-value-as-string
                   {:op :subscribe :args (mapv #(assoc base :instId %) instruments)}))))
 
 (defn handle [raw]
-  (let [{:keys [arg data] :as payload} (parse-string raw true)
+  (let [{:keys [arg data] :as payload}
+        (json/read-value raw json/keyword-keys-object-mapper)
         {:keys [channel instId]} arg]
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword channel)
@@ -50,7 +51,7 @@
                  deref
                  :body
                  bs/to-string
-                 (parse-string true)
+                 (json/read-value json/keyword-keys-object-mapper)
                  :data)]
     (reset! ct-size (reduce (fn [acc {:keys [instId ctVal ctType]}]
                               (let [k (keyword instId)]

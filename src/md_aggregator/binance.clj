@@ -1,8 +1,8 @@
 (ns md-aggregator.binance
   (:require [aleph.http :as http]
-            [cheshire.core :refer [parse-string]]
             [clojure.core.async :refer [put!]]
             [clojure.string :refer [join lower-case]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -16,7 +16,7 @@
 (def connection (atom nil))
 
 (defn handle [raw]
-  (let [{:keys [s p q T m] :as payload} (:data (parse-string raw true))]
+  (let [{:keys [s p q T m] :as payload} (:data (json/read-value raw json/keyword-keys-object-mapper))]
     (statsd/count :ws-msg 1 tags)
     (if s
       (let [{:keys [channel] :as meta-info} ((keyword s) info)

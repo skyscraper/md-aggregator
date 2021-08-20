@@ -1,7 +1,7 @@
 (ns md-aggregator.ftx
   (:require [aleph.http :as http]
-            [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [put!]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -13,15 +13,16 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
-(def ping (generate-string {:op :ping}))
+(def ping (json/write-value-as-string {:op :ping}))
 (def ping-interval 15000)
 
 (defn subscribe [conn markets]
   (doseq [market markets]
-    (s/put! conn (generate-string {:op :subscribe :channel :trades :market market}))))
+    (s/put! conn (json/write-value-as-string {:op :subscribe :channel :trades :market market}))))
 
 (defn handle [raw]
-  (let [{:keys [channel market type code msg data] :as payload} (parse-string raw true)]
+  (let [{:keys [channel market type code msg data] :as payload}
+        (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword type)
       :update (let [{:keys [channel] :as meta-info} ((keyword market) info)]

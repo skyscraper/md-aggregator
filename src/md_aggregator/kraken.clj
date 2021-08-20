@@ -1,7 +1,7 @@
 (ns md-aggregator.kraken
   (:require [aleph.http :as http]
-            [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [put!]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -17,31 +17,35 @@
 (def liq-types #{:liquidation :termination})
 
 (defn subscribe [conn instruments]
-  (s/put! conn (generate-string
+  (s/put! conn (json/write-value-as-string
                 {:event :subscribe :feed :trade :product_ids instruments})))
 
 (defn handle [raw]
-  (let [{:keys [event feed product_ids] :as payload} (parse-string raw true)]
+  (let [{:keys [event feed product_ids] :as payload}
+        (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
     (cond
-      (some? event) (if (some? feed)
-                      (log/info event feed product_ids)
-                      (log/info event))
-      (some? feed) (condp = (keyword feed)
-                     :trade (let [{:keys [product_id price qty side time type]} payload
-                                  {:keys [channel] :as meta-info} ((keyword product_id) info)]
-                              (when channel
-                                (let [trade {:price (double price)
-                                             :size (double (/ qty price)) ;; inverse future
-                                             :side (keyword side)
-                                             :time time
-                                             :liquidation (if ((keyword type) liq-types) true false)
-                                             :source exch}]
-                                  (put! channel trade)
-                                  (trade-stats trade tags meta-info))))
-                     :trade_snapshot (log/info "received initial trade snapshot, ignoring...")
-                     (log/warn "received unknown feed type:" feed))
-      :else (log/warn "received unhandled kraken message:" payload))))
+      (some? event)
+      (if (some? feed)
+        (log/info event feed product_ids)
+        (log/info event))
+      (some? feed)
+      (condp = (keyword feed)
+        :trade (let [{:keys [product_id price qty side time type]} payload
+                     {:keys [channel] :as meta-info} ((keyword product_id) info)]
+                 (when channel
+                   (let [trade {:price (double price)
+                                :size (double (/ qty price)) ;; inverse future
+                                :side (keyword side)
+                                :time time
+                                :liquidation (if ((keyword type) liq-types) true false)
+                                :source exch}]
+                     (put! channel trade)
+                     (trade-stats trade tags meta-info))))
+        :trade_snapshot (log/info "received initial trade snapshot, ignoring...")
+        (log/warn "received unknown feed type:" feed))
+      :else
+      (log/warn "received unhandled kraken message:" payload))))
 
 (defn rename [k]
   (keyword (str "PI_" (name (if (= :BTC k) :XBT k)) "USD")))

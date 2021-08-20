@@ -1,8 +1,8 @@
 (ns md-aggregator.kucoin
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [<! put! go-loop timeout]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -20,20 +20,21 @@
 (defn on-connect [conn interval]
   (go-loop []
     (<! (timeout interval))
-    (when @(s/put! conn (generate-string (assoc ping :id (System/currentTimeMillis))))
+    (when @(s/put! conn (json/write-value-as-string (assoc ping :id (System/currentTimeMillis))))
       (recur))))
 
 (defn subscribe [conn instruments]
   ;; TODO: find actual trade data endpoint... doesn't seem to exist
   (doseq [instrument instruments]
-    (s/put! conn (generate-string
+    (s/put! conn (json/write-value-as-string
                   {:id (System/currentTimeMillis)
                    :type :subscribe
                    :topic (str "/contractMarket/execution" instrument)
                    :response true}))))
 
 (defn handle [raw]
-  (let [{:keys [type subject data] :as payload} (parse-string raw true)]
+  (let [{:keys [type subject data] :as payload}
+        (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword type)
       :message (when (= :match (keyword subject))
@@ -72,7 +73,7 @@
                                             deref
                                             :body
                                             bs/to-string
-                                            (parse-string true)
+                                            (json/read-value json/keyword-keys-object-mapper)
                                             :data)
         {:keys [endpoint pingInterval]} (first instanceServers)
         conn @(ws-conn endpoint token)]

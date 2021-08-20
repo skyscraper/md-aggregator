@@ -1,9 +1,9 @@
 (ns md-aggregator.huobi
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [cheshire.core :refer [parse-stream generate-string]]
             [clojure.core.async :refer [put!]]
             [clojure.java.io :refer [reader]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -20,11 +20,12 @@
 
 (defn subscribe [conn channels]
   (doseq [ch channels]
-    (s/put! conn (generate-string {:sub ch}))))
+    (s/put! conn (json/write-value-as-string {:sub ch}))))
 
 (defn handle [raw]
   (with-open [rdr (reader (GZIPInputStream. (bs/to-input-stream raw)))]
-    (let [{:keys [ch subbed status ping tick] :as payload} (parse-stream rdr true)]
+    (let [{:keys [ch subbed status ping tick] :as payload}
+          (json/read-value rdr json/keyword-keys-object-mapper)]
       (statsd/count :ws-msg 1 tags)
       (cond
         (some? ch) (let [{:keys [channel] :as meta-info} ((keyword ch) info)]
@@ -38,7 +39,7 @@
                          (put! channel trade)
                          (trade-stats trade tags meta-info))))
         (some? subbed) (log/info subbed "subscription status:" status)
-        (some? ping) (s/put! @connection (generate-string {:pong ping}))
+        (some? ping) (s/put! @connection (json/write-value-as-string {:pong ping}))
         :else (log/warn "unhandled huobi message: " payload)))))
 
 (defn rename [k]
