@@ -3,6 +3,7 @@
             [byte-streams :as bs]
             [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [put!]]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [info-map trade-stats]]
@@ -62,13 +63,19 @@
 (defn rename [k]
   (keyword (str (name k) "-USDT-SWAP")))
 
+(declare connect!)
+
 (defn ws-conn []
-  (http/websocket-client url {:epoll? true
-                              :max-frame-payload 131072
-                              :compression? true
-                              :heartbeats {:send-after-idle 3e4
-                                           :payload ping
-                                           :timeout 3e4}}))
+  (d/catch
+      (http/websocket-client url {:epoll? true
+                                  :max-frame-payload 131072
+                                  :compression? true
+                                  :heartbeats {:send-after-idle 3e4
+                                               :payload ping
+                                               :timeout 3e4}})
+      (fn [e]
+        (log/error (name exch) "ws problem:" e)
+        (connect!))))
 
 (defn connect! []
   (let [conn @(ws-conn)]

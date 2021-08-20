@@ -3,6 +3,7 @@
             [byte-streams :as bs]
             [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [<! put! go-loop timeout]]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [info-map trade-stats]]
@@ -54,10 +55,16 @@
 (defn rename [k]
   (keyword (str (name (if (= :BTC k) :XBT k)) "USDTM")))
 
+(declare connect!)
+
 (defn ws-conn [endpoint token]
-  (http/websocket-client
-   (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
-   {:epoll? true}))
+  (d/catch
+      (http/websocket-client
+       (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
+       {:epoll? true})
+      (fn [e]
+        (log/error (name exch) "ws problem:" e)
+        (connect!))))
 
 (defn connect! []
   (let [{:keys [token instanceServers]} (-> (str api-url token-ep)

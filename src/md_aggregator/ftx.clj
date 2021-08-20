@@ -2,6 +2,7 @@
   (:require [aleph.http :as http]
             [cheshire.core :refer [parse-string generate-string]]
             [clojure.core.async :refer [put!]]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [epoch info-map ping-loop trade-stats]]
@@ -44,9 +45,15 @@
 (defn rename [k]
   (keyword (str (name k) "-PERP")))
 
+(declare connect!)
+
 (defn ws-conn []
-  (http/websocket-client url {:epoll? true
-                              :max-frame-payload 131072}))
+  (d/catch
+      (http/websocket-client url {:epoll? true
+                                  :max-frame-payload 131072})
+      (fn [e]
+        (log/error (name exch) "ws problem:" e)
+        (connect!))))
 
 (defn connect! []
   (let [conn @(ws-conn)]

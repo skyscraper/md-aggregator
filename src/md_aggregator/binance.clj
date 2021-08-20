@@ -3,12 +3,11 @@
             [cheshire.core :refer [parse-string]]
             [clojure.core.async :refer [put!]]
             [clojure.string :refer [join lower-case]]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [info-map trade-stats]]
             [taoensso.timbre :as log]))
-
-;; TODO: stream will get disconnected at 24h mark, need to handle this
 
 (def url "wss://fstream.binance.com")
 (def exch :binance)
@@ -39,8 +38,14 @@
    "/stream?streams="
    (join "/" (map #(str (lower-case (name %)) "@trade") (keys info)))))
 
+(declare connect!)
+
 (defn ws-conn []
-  (http/websocket-client (full-url) {:epoll? true}))
+  (d/catch
+      (http/websocket-client (full-url) {:epoll? true})
+      (fn [e]
+        (log/error (name exch) "ws problem:" e)
+        (connect!))))
 
 (defn connect! []
   (let [conn @(ws-conn)]
