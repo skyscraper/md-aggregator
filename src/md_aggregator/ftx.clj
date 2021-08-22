@@ -1,11 +1,9 @@
 (ns md-aggregator.ftx
-  (:require [aleph.http :as http]
-            [clojure.core.async :refer [>! go]]
+  (:require [clojure.core.async :refer [>! go]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [epoch info-map ping-loop trade-stats]]
+            [md-aggregator.utils :refer [epoch info-map ping-loop trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://ftx.com/ws/")
@@ -13,12 +11,15 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
+(def ws-props {:max-frame-payload 131072})
 (def ping (json/write-value-as-string {:op :ping}))
 (def ping-interval 15000)
 
 (defn subscribe [conn markets]
   (doseq [market markets]
-    (s/put! conn (json/write-value-as-string {:op :subscribe :channel :trades :market market}))))
+    (s/put! conn (json/write-value-as-string {:op :subscribe
+                                              :channel :trades
+                                              :market market}))))
 
 (defn handle [raw]
   (let [{:keys [channel market type code msg data] :as payload}
@@ -33,7 +34,7 @@
                                           (assoc :source exch))]]
                     (>! channel trade)
                     (trade-stats trade tags meta-info))))
-      :partial (log/warn (format "received partial event: %s" payload)) ;; not currently implemented
+      :partial (log/warn (format "received partial event: %s" payload))
       :info (do (log/info (format "ftx info: %s %s" code msg))
                 (when (= code 20001)
                   (log/info (name exch) "server requested us to reconnect...")
@@ -47,19 +48,8 @@
 (defn rename [k]
   (keyword (str (name k) "-PERP")))
 
-(declare connect!)
-
-(defn ws-conn []
-  (d/catch
-      (http/websocket-client url {:epoll? true
-                                  :max-frame-payload 131072})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
-
 (defn connect! []
-  (let [conn @(ws-conn)]
-    (log/info "connecting to" (name exch) "...")
+  (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (ping-loop conn ping-interval ping)

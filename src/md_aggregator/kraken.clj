@@ -1,11 +1,9 @@
 (ns md-aggregator.kraken
-  (:require [aleph.http :as http]
-            [clojure.core.async :refer [put!]]
+  (:require [clojure.core.async :refer [put!]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 
@@ -14,6 +12,8 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
+(def ws-props {:heartbeats {:send-after-idle 6e4
+                            :timeout 6e4}})
 (def liq-types #{:liquidation :termination})
 
 (defn subscribe [conn instruments]
@@ -50,20 +50,8 @@
 (defn rename [k]
   (keyword (str "PI_" (name (if (= :BTC k) :XBT k)) "USD")))
 
-(declare connect!)
-
-(defn ws-conn []
-  (d/catch
-      (http/websocket-client url {:epoll? true
-                                  :heartbeats {:send-after-idle 6e4
-                                               :timeout 6e4}})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
-
 (defn connect! []
-  (let [conn @(ws-conn)]
-    (log/info "connecting to" (name exch) "...")
+  (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (subscribe conn (keys info))

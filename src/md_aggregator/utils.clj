@@ -1,9 +1,12 @@
 (ns md-aggregator.utils
-  (:require [clojure.core.async :refer [<! chan go-loop timeout]]
+  (:require [aleph.http :as http]
+            [clojure.core.async :refer [<! chan go-loop timeout]]
             [clojure.string :refer [lower-case upper-case]]
             [java-time :refer [instant zoned-date-time]]
+            [manifold.deferred :as d]
             [manifold.stream :as s]
-            [md-aggregator.statsd :as statsd]))
+            [md-aggregator.statsd :as statsd]
+            [taoensso.timbre :as log]))
 
 ;; constants
 (def coin-str "coin")
@@ -38,6 +41,15 @@
 ;; time
 (defn epoch [dt-str]
   (.toEpochMilli (instant (zoned-date-time dt-str))))
+
+;; ws
+(defn ws-conn [exch url props connect-fn]
+  (log/info "connecting to" (name exch) "...")
+  (d/catch
+      (http/websocket-client url (merge {:epoll? true} props))
+      (fn [e]
+        (log/error (name exch) "ws problem:" e)
+        (connect-fn))))
 
 ;; ping
 (defn ping-loop [conn interval payload]

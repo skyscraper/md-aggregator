@@ -1,12 +1,10 @@
 (ns md-aggregator.binance
-  (:require [aleph.http :as http]
-            [clojure.core.async :refer [put!]]
+  (:require [clojure.core.async :refer [put!]]
             [clojure.string :refer [join lower-case]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://fstream.binance.com")
@@ -32,24 +30,16 @@
 (defn rename [k]
   (keyword (str (name k) "USDT")))
 
-(defn full-url []
+(defn full-url [syms]
   (str
    url
    "/stream?streams="
-   (join "/" (map #(str (lower-case (name %)) "@trade") (keys info)))))
+   (join "/" (map #(str (lower-case (name %)) "@trade") syms))))
 
-(declare connect!)
-
-(defn ws-conn []
-  (d/catch
-      (http/websocket-client (full-url) {:epoll? true})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
+(def full-url-memo (memoize full-url))
 
 (defn connect! []
-  (let [conn @(ws-conn)]
-    (log/info "connecting to" (name exch) "...")
+  (let [conn @(ws-conn exch (full-url-memo (keys info)) nil connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (s/on-closed conn connect!)))

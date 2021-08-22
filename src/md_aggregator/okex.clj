@@ -3,10 +3,9 @@
             [byte-streams :as bs]
             [clojure.core.async :refer [>! go]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://aws.okex.com/api/v5/public")
@@ -16,8 +15,12 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
+(def ws-props {:max-frame-payload 131072
+               :compression? true
+               :heartbeats {:send-after-idle 3e4
+                            :payload "ping"
+                            :timeout 3e4}})
 (def ct-size (atom {}))
-(def ping "ping")
 
 (defn subscribe [conn instruments]
   (let [base {:channel :trades}]
@@ -25,28 +28,31 @@
                   {:op :subscribe :args (mapv #(assoc base :instId %) instruments)}))))
 
 (defn handle [raw]
-  (let [{:keys [arg data] :as payload}
+  (let [{:keys [event arg data] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)
         {:keys [channel instId]} arg]
     (statsd/count :ws-msg 1 tags)
-    (condp = (keyword channel)
-      :trades (when instId
-                (let [kw-inst (keyword instId)
-                      cts (kw-inst @ct-size)
-                      {:keys [channel] :as meta-info} (kw-inst info)]
-                  (when channel
-                    (go
-                      (doseq [{:keys [px sz side ts]} data
-                              :let [trade {:price (Double/parseDouble px)
-                                           :size (* (Double/parseDouble sz) cts)
-                                           :side (keyword side)
-                                           :time (Long/parseLong ts)
-                                           :source exch}]]
-                        (>! channel trade)
-                        (trade-stats trade tags meta-info))))))
-      (log/warn (str "unhandled okex event: " payload)))))
+    (if event
+      (log/info event channel instId)
+      (condp = (keyword channel)
+        :trades (when instId
+                  (let [kw-inst (keyword instId)
+                        cts (kw-inst @ct-size)
+                        {:keys [channel] :as meta-info} (kw-inst info)]
+                    (when channel
+                      (go
+                        (doseq [{:keys [px sz side ts]} data
+                                :let [trade {:price (Double/parseDouble px)
+                                             :size (* (Double/parseDouble sz) cts)
+                                             :side (keyword side)
+                                             :time (Long/parseLong ts)
+                                             :source exch}]]
+                          (>! channel trade)
+                          (trade-stats trade tags meta-info))))))
+        (log/warn (str "unhandled okex event: " payload))))))
 
 (defn reset-ct-sizes! []
+  (log/info "resetting ct sizes...")
   (let [data (-> (str api-url inst-ep)
                  http/get
                  deref
@@ -65,23 +71,8 @@
 (defn rename [k]
   (keyword (str (name k) "-USDT-SWAP")))
 
-(declare connect!)
-
-(defn ws-conn []
-  (d/catch
-      (http/websocket-client url {:epoll? true
-                                  :max-frame-payload 131072
-                                  :compression? true
-                                  :heartbeats {:send-after-idle 3e4
-                                               :payload ping
-                                               :timeout 3e4}})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
-
 (defn connect! []
-  (let [conn @(ws-conn)]
-    (log/info "connecting to" (name exch) "...")
+  (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (subscribe conn (keys info))

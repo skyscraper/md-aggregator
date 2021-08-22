@@ -3,10 +3,9 @@
             [byte-streams :as bs]
             [clojure.core.async :refer [<! put! go-loop timeout]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://api-futures.kucoin.com")
@@ -56,16 +55,8 @@
 (defn rename [k]
   (keyword (str (name (if (= :BTC k) :XBT k)) "USDTM")))
 
-(declare connect!)
-
-(defn ws-conn [endpoint token]
-  (d/catch
-      (http/websocket-client
-       (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis))
-       {:epoll? true})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
+(defn full-url [endpoint token]
+  (str endpoint "?token=" token "&connectId=" (System/currentTimeMillis)))
 
 (defn connect! []
   (let [{:keys [token instanceServers]} (-> (str api-url token-ep)
@@ -76,8 +67,7 @@
                                             (json/read-value json/keyword-keys-object-mapper)
                                             :data)
         {:keys [endpoint pingInterval]} (first instanceServers)
-        conn @(ws-conn endpoint token)]
-    (log/info "connecting to" (name exch) "...")
+        conn @(ws-conn exch (full-url endpoint token) nil connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (on-connect conn pingInterval)

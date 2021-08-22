@@ -1,13 +1,11 @@
 (ns md-aggregator.huobi
-  (:require [aleph.http :as http]
-            [byte-streams :as bs]
+  (:require [byte-streams :as bs]
             [clojure.core.async :refer [>! go]]
             [clojure.java.io :refer [reader]]
             [jsonista.core :as json]
-            [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats]]
+            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
             [taoensso.timbre :as log])
   (:import (java.util.zip GZIPInputStream)))
 
@@ -16,6 +14,7 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
+(def ws-props {:max-frame-payload 131072})
 (def base "market.%s.trade.detail")
 
 (defn subscribe [conn channels]
@@ -46,19 +45,8 @@
 (defn rename [k]
   (keyword (format base (str (name k) "-USDT"))))
 
-(declare connect!)
-
-(defn ws-conn []
-  (d/catch
-      (http/websocket-client url {:epoll? true
-                                  :max-frame-payload 131072})
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect!))))
-
 (defn connect! []
-  (let [conn @(ws-conn)]
-    (log/info "connecting to" (name exch) "...")
+  (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
     (s/consume handle conn)
     (subscribe conn (keys info))
