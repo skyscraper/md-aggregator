@@ -2,6 +2,7 @@
   (:gen-class)
   (:require [clojure.core.async :refer [<! go-loop]]
             [md-aggregator.binance :as binance]
+            [md-aggregator.deribit :as deribit]
             [md-aggregator.ftx :as ftx]
             [md-aggregator.huobi :as huobi]
             [md-aggregator.kraken :as kraken]
@@ -24,7 +25,7 @@
         ;; (log/info x)
         (recur)))))
 
-(def inits [binance/init ftx/init huobi/init kraken/init okex/init])
+(def inits [binance/init deribit/init ftx/init huobi/init kraken/init okex/init])
 
 (defn -main [& args]
   (log/swap-config! assoc :appenders {:spit (log/spit-appender {:fname "./logs/app.log"})})
