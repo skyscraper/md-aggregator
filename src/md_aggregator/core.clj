@@ -29,6 +29,7 @@
 (defn -main [& args]
   (log/swap-config! assoc :appenders {:spit (log/spit-appender {:fname "./logs/app.log"})})
   (log/set-level! :info)
+  (log/info "*** starting market data aggregator ***")
   (statsd/reset-statsd!)
   (reset! trade-channels (generate-channel-map @symbols))
   (start-trade-consumers @trade-channels)
