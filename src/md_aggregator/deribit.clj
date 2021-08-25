@@ -1,6 +1,6 @@
 (ns md-aggregator.deribit
   (:require [clojure.core.async :refer [>! go]]
-            [clojure.string :refer [includes?]]
+            [clojure.string :refer [includes? join]]
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -12,15 +12,19 @@
 (def tags [(str "exch" exch)])
 (def info {})
 (def connection (atom nil))
-(def ws-props {:max-frame-payload 131072
-               :heartbeats {:send-after-idle 3e4
-                            :timeout 3e4}})
+(def ws-props {:max-frame-payload 131072})
+
+(defn msg-base []
+  {:jsonrpc "2.0"
+   :id (System/currentTimeMillis)})
 
 (defn subscribe [conn channels]
-  (s/put! conn (json/write-value-as-string {:jsonrpc "2.0"
-                                            :id (System/currentTimeMillis)
-                                            :method "public/subscribe"
-                                            :params {:channels channels}})))
+  (s/put! conn (json/write-value-as-string (assoc (msg-base)
+                                                  :method "public/set_heartbeat"
+                                                  :params {:interval 30})))
+  (s/put! conn (json/write-value-as-string (assoc (msg-base)
+                                                  :method "public/subscribe"
+                                                  :params {:channels channels}))))
 
 (defn handle [raw]
   (let [{:keys [result method params] :as payload}
@@ -44,9 +48,14 @@
                                    :source exch}]]
                 (>! channel trade)
                 (trade-stats trade tags meta-info)))))
+        :heartbeat
+        (s/put! @connection (json/write-value-as-string (assoc (msg-base)
+                                                               :method "public/test"
+                                                               :params {})))
         (log/warn "unhandled deribit method" payload))
       (if result
-        (log/info "subscribed to:" result)
+        (when (vector? result)
+          (log/info "subscribed to:" (join "," result)))
         (log/warn "unhandled result:" payload)))))
 
 (defn rename [k]
