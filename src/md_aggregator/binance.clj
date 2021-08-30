@@ -4,12 +4,13 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://fstream.binance.com")
 (def exch :binance)
 (def tags [(str "exch" exch)])
+(def ws-timeout 10000)
 (def info {})
 (def connection (atom nil))
 
@@ -41,7 +42,7 @@
 (defn connect! []
   (let [conn @(ws-conn exch (full-url-memo (keys info)) nil connect!)]
     (reset! connection conn)
-    (s/consume handle conn)
+    (consume exch conn ws-timeout handle)
     (s/on-closed conn connect!)))
 
 (defn init [trade-channels]

@@ -5,13 +5,14 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://api-futures.kucoin.com")
 (def token-ep "/api/v1/bullet-public")
 (def exch :kucoin)
 (def tags [(str "exch" exch)])
+(def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))
 (def ping {:type :ping})
@@ -69,7 +70,7 @@
         {:keys [endpoint pingInterval]} (first instanceServers)
         conn @(ws-conn exch (full-url endpoint token) nil connect!)]
     (reset! connection conn)
-    (s/consume handle conn)
+    (consume exch conn ws-timeout handle)
     (on-connect conn pingInterval)
     (subscribe conn (keys info))
     (s/on-closed conn connect!)))

@@ -51,6 +51,17 @@
         (log/error (name exch) "ws problem:" e)
         (connect-fn))))
 
+;; consume
+(defn consume [exch conn ws-timeout handle-fn]
+  (go-loop []
+    (if-let [raw @(s/try-take! conn ws-timeout)]
+      (do
+        (handle-fn raw)
+        (recur))
+      (do
+        (log/error (format "Stopped receiving %s websocket data! Closing connection..." (name exch)))
+        (s/close! conn)))))
+
 ;; ping
 (defn ping-loop [conn interval payload]
   (go-loop []

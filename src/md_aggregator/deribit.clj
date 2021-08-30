@@ -4,12 +4,13 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://www.deribit.com/ws/api/v2")
 (def exch :deribit)
 (def tags [(str "exch" exch)])
+(def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))
 (def ws-props {:max-frame-payload 131072})
@@ -64,7 +65,7 @@
 (defn connect! []
   (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
-    (s/consume handle conn)
+    (consume exch conn ws-timeout handle)
     (subscribe conn (keys info))
     (s/on-closed conn connect!)))
 

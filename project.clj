@@ -6,7 +6,7 @@
             :distribution :repo}
   :dependencies [[aleph "0.4.7-alpha8"]
                  [byte-streams "0.2.5-alpha2"]
-                 [clojure.java-time "0.3.2"]
+                 [clojure.java-time "0.3.3"]
                  [com.datadoghq/java-dogstatsd-client "2.13.0"]
                  [com.taoensso/timbre "5.1.2"]
                  [environ "1.2.0"]
