@@ -11,6 +11,7 @@
   (:import (java.util.zip GZIPInputStream)))
 
 (def url "wss://api.hbdm.vn/swap-ws")
+(def exch :huobi-inv)
 (def tags [(str "exch" huobi/exch) inv-true])
 (def ws-timeout 20000)
 (def info {})
@@ -38,9 +39,9 @@
   (keyword (format huobi/base (str (name k) "-USD"))))
 
 (defn connect! []
-  (let [conn @(ws-conn huobi/exch url ws-props connect!)]
+  (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
-    (consume huobi/exch conn ws-timeout handle)
+    (consume exch conn ws-timeout handle)
     (huobi/subscribe conn (keys info))
     (s/on-closed conn connect!)))
 

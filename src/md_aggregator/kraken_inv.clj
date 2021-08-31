@@ -9,7 +9,7 @@
 
 
 (def url "wss://futures.kraken.com/ws/v1")
-(def exch :kraken)
+(def exch :kraken) ;; name this inv if kraken releases linear contracts
 (def tags [(str "exch" exch) inv-true])
 (def ws-timeout 60000)
 (def info {})

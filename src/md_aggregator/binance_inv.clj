@@ -10,6 +10,7 @@
 (def api-url "https://dapi.binance.com")
 (def ex-info-ep "/dapi/v1/exchangeInfo")
 (def url "wss://dstream.binance.com")
+(def exch :binance-inv)
 (def tags [(str "exch" binance/exch) inv-true])
 (def ws-timeout 20000)
 (def info {})
@@ -39,13 +40,13 @@
   (keyword (str (name k) "USD_PERP")))
 
 (defn connect! []
-  (let [conn @(ws-conn binance/exch (binance/full-url-memo (keys info)) nil connect!)]
+  (let [conn @(ws-conn exch (binance/full-url url (keys info)) nil connect!)]
     (reset! connection conn)
-    (consume binance/exch conn ws-timeout handle)
+    (consume exch conn ws-timeout handle)
     (s/on-closed conn connect!)))
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (reset! ct-size (get-ct-sizes binance/exch (str api-url ex-info-ep) :symbols ct-r-fn))
+  (reset! ct-size (get-ct-sizes exch (str api-url ex-info-ep) :symbols ct-r-fn))
   (connect!))
 

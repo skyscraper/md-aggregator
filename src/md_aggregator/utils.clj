@@ -75,7 +75,7 @@
 
 ;; contract sizing
 (defn get-ct-sizes [exch url data-kw r-fn]
-  (log/info (format "fetching ct sizes for %s..." exch))
+  (log/info (format "fetching ct sizes for %s..." (name exch)))
   (let [data (-> url
                  http/get
                  deref

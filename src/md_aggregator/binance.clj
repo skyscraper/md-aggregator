@@ -34,16 +34,14 @@
 (defn rename [k]
   (keyword (str (name k) "USDT")))
 
-(defn full-url [syms]
+(defn full-url [base syms]
   (str
-   url
+   base
    "/stream?streams="
    (join "/" (map #(str (lower-case (name %)) "@trade") syms))))
 
-(def full-url-memo (memoize full-url))
-
 (defn connect! []
-  (let [conn @(ws-conn exch (full-url-memo (keys info)) nil connect!)]
+  (let [conn @(ws-conn exch (full-url url (keys info)) nil connect!)]
     (reset! connection conn)
     (consume exch conn ws-timeout handle)
     (s/on-closed conn connect!)))
