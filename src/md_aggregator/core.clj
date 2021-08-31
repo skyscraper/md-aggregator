@@ -6,7 +6,8 @@
             [md-aggregator.deribit :as deribit]
             [md-aggregator.ftx :as ftx]
             [md-aggregator.huobi :as huobi]
-            [md-aggregator.kraken :as kraken]
+            [md-aggregator.huobi-inv :as huobi-inv]
+            [md-aggregator.kraken-inv :as kraken-inv]
             [md-aggregator.okex :as okex]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [generate-channel-map]]
@@ -26,7 +27,15 @@
         ;; (log/info x)
         (recur)))))
 
-(def inits [binance/init binance-inv/init deribit/init ftx/init huobi/init kraken/init okex/init])
+(def inits
+  [binance/init
+   binance-inv/init
+   deribit/init
+   ftx/init
+   huobi/init
+   huobi-inv/init
+   kraken-inv/init
+   okex/init])
 
 (defn -main [& args]
   (log/swap-config! assoc :appenders {:spit (log/spit-appender {:fname "./logs/app.log"})})

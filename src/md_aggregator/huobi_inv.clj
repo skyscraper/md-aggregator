@@ -1,33 +1,21 @@
-(ns md-aggregator.huobi
+(ns md-aggregator.huobi-inv
   (:require [byte-streams :as bs]
             [clojure.core.async :refer [>! go]]
             [clojure.java.io :refer [reader]]
             [jsonista.core :as json]
             [manifold.stream :as s]
+            [md-aggregator.huobi :as huobi]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-true trade-stats ws-conn]]
             [taoensso.timbre :as log])
   (:import (java.util.zip GZIPInputStream)))
 
-(def url "wss://api.hbdm.vn/linear-swap-ws")
-(def exch :huobi)
-(def tags [(str "exch" exch) inv-false])
+(def url "wss://api.hbdm.vn/swap-ws")
+(def tags [(str "exch" huobi/exch) inv-true])
 (def ws-timeout 20000)
 (def info {})
 (def connection (atom nil))
 (def ws-props {:max-frame-payload 131072})
-(def base "market.%s.trade.detail")
-
-(defn subscribe [conn channels]
-  (doseq [ch channels]
-    (s/put! conn (json/write-value-as-string {:sub ch}))))
-
-(defn normalize [{:keys [price quantity direction ts]}]
-  {:price (double price)
-   :size (double quantity)
-   :side (keyword direction)
-   :time ts
-   :source exch})
 
 (defn handle [raw]
   (with-open [rdr (reader (GZIPInputStream. (bs/to-input-stream raw)))]
@@ -39,21 +27,21 @@
                      (when channel
                        (go
                          (doseq [x (:data tick)
-                                 :let [trade (normalize x)]]
+                                 :let [trade (huobi/normalize x)]]
                            (>! channel trade)
                            (trade-stats trade tags meta-info)))))
         (some? subbed) (log/info subbed "subscription status:" status)
         (some? ping) (s/put! @connection (json/write-value-as-string {:pong ping}))
-        :else (log/warn "unhandled huobi message: " payload)))))
+        :else (log/warn "unhandled huobi-inv message: " payload)))))
 
 (defn rename [k]
-  (keyword (format base (str (name k) "-USDT"))))
+  (keyword (format huobi/base (str (name k) "-USD"))))
 
 (defn connect! []
-  (let [conn @(ws-conn exch url ws-props connect!)]
+  (let [conn @(ws-conn huobi/exch url ws-props connect!)]
     (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (subscribe conn (keys info))
+    (consume huobi/exch conn ws-timeout handle)
+    (huobi/subscribe conn (keys info))
     (s/on-closed conn connect!)))
 
 (defn init [trade-channels]

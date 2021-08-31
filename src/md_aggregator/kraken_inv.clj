@@ -1,15 +1,16 @@
-(ns md-aggregator.kraken
+(ns md-aggregator.kraken-inv
   (:require [clojure.core.async :refer [put!]]
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-true trade-stats
+                                         ws-conn]]
             [taoensso.timbre :as log]))
 
 
 (def url "wss://futures.kraken.com/ws/v1")
 (def exch :kraken)
-(def tags [(str "exch" exch)])
+(def tags [(str "exch" exch) inv-true])
 (def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))

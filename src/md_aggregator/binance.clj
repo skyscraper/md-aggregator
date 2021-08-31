@@ -4,26 +4,29 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://fstream.binance.com")
 (def exch :binance)
-(def tags [(str "exch" exch)])
+(def tags [(str "exch" exch) inv-false])
 (def ws-timeout 10000)
 (def info {})
 (def connection (atom nil))
+
+(defn normalize [p q m T]
+  {:price (Double/parseDouble p)
+   :size (Double/parseDouble q)
+   :side (if m :sell :buy)
+   :time T
+   :source exch})
 
 (defn handle [raw]
   (let [{:keys [s p q T m] :as payload} (:data (json/read-value raw json/keyword-keys-object-mapper))]
     (statsd/count :ws-msg 1 tags)
     (if s
       (let [{:keys [channel] :as meta-info} ((keyword s) info)
-            trade {:price (Double/parseDouble p)
-                   :size (Double/parseDouble q)
-                   :side (if m :sell :buy)
-                   :time T
-                   :source exch}]
+            trade (normalize p q m T)]
         (put! channel trade)
         (trade-stats trade tags meta-info))
       (log/warn "unhandled binance message:" payload))))

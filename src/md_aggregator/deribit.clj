@@ -4,12 +4,12 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://www.deribit.com/ws/api/v2")
 (def exch :deribit)
-(def tags [(str "exch" exch)])
+(def tags [(str "exch" exch) inv-false])
 (def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))
@@ -27,6 +27,14 @@
                                                   :method "public/subscribe"
                                                   :params {:channels channels}))))
 
+(defn normalize [{:keys [price amount direction timestamp liquidation]}]
+  {:price price
+   :size (double (/ amount price))
+   :side (keyword direction)
+   :time timestamp
+   :liquidation (and (some? liquidation) (includes? liquidation "T"))
+   :source exch})
+
 (defn handle [raw]
   (let [{:keys [result method params] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)]
@@ -39,14 +47,8 @@
               ((keyword (:channel params)) info)]
           (when channel
             (go
-              (doseq [{:keys [price amount direction timestamp liquidation]} data
-                      :let [trade {:price price
-                                   :size (double (/ amount price))
-                                   :side (keyword direction)
-                                   :time timestamp
-                                   :liquidation (and (some? liquidation)
-                                                     (includes? liquidation "T"))
-                                   :source exch}]]
+              (doseq [x data
+                      :let [trade (normalize x)]]
                 (>! channel trade)
                 (trade-stats trade tags meta-info)))))
         :heartbeat

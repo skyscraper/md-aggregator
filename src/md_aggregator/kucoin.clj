@@ -5,13 +5,13 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://api-futures.kucoin.com")
 (def token-ep "/api/v1/bullet-public")
 (def exch :kucoin)
-(def tags [(str "exch" exch)])
+(def tags [(str "exch" exch) inv-false])
 (def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))
@@ -32,21 +32,24 @@
                    :topic (str "/contractMarket/execution" instrument)
                    :response true}))))
 
+(defn normalize [{:keys [side matchSize price time]}]
+  {:price (double price)
+   :size (double matchSize)
+   :side (keyword side)
+   :time (long (/ time 1e5))
+   :source exch})
+
 (defn handle [raw]
   (let [{:keys [type subject data] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword type)
       :message (when (= :match (keyword subject))
-                 (let [{:keys [symbol side matchSize price time]} data
+                 (let [{:keys [symbol] :as x} data
                        kw-sym (keyword symbol)
                        {:keys [channel] :as meta-info} (kw-sym info)]
                    (when channel
-                     (let [trade {:price (double price)
-                                  :size (double matchSize)
-                                  :side (keyword side)
-                                  :time (long (/ time 1e5))
-                                  :source exch}]
+                     (let [trade (normalize x)]
                        (put! channel trade)
                        (trade-stats trade tags meta-info)))))
       :welcome (log/info "kucoin token accepted")

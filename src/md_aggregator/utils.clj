@@ -1,8 +1,10 @@
 (ns md-aggregator.utils
   (:require [aleph.http :as http]
+            [byte-streams :as bs]
             [clojure.core.async :refer [<! chan go-loop timeout]]
             [clojure.string :refer [lower-case upper-case]]
             [java-time :refer [instant zoned-date-time]]
+            [jsonista.core :as json]
             [manifold.deferred :as d]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
@@ -11,6 +13,8 @@
 ;; constants
 (def coin-str "coin")
 (def side-str "side")
+(def inv-true "inverse:true")
+(def inv-false "inverse:false")
 
 ;; formatting
 (defn uc-kw
@@ -68,6 +72,18 @@
     (<! (timeout interval))
     (when @(s/put! conn payload)
       (recur))))
+
+;; contract sizing
+(defn get-ct-sizes [exch url data-kw r-fn]
+  (log/info (format "fetching ct sizes for %s..." exch))
+  (let [data (-> url
+                 http/get
+                 deref
+                 :body
+                 bs/to-string
+                 (json/read-value json/keyword-keys-object-mapper)
+                 data-kw)]
+    (reduce r-fn {} data)))
 
 ;; trade stats
 (defn trade-stats [{:keys [price size time side]} tags {:keys [coin-tag price-gauge]}]
