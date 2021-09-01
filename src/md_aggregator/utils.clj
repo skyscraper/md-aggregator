@@ -101,7 +101,7 @@
 ;; process incoming market data and report stats
 (defn process-single [trade tags {:keys [channel] :as meta-info}]
   (go
-    (when (and trade (>! channel trade))
+    (when (>! channel trade)
       (trade-stats trade tags meta-info))))
 
 (defn process [trades tags {:keys [channel] :as meta-info}]

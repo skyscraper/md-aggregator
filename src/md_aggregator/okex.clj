@@ -39,8 +39,9 @@
       (condp = (keyword channel)
         :trades (when instId
                   (let [kw-inst (keyword instId)
-                        cts (kw-inst @ct-size)]
-                    (process (map #(normalize % cts) data) tags (kw-inst info))))
+                        cts (kw-inst @ct-size)
+                        trades (map #(normalize % cts) data)]
+                    (process trades tags (kw-inst info))))
         (log/warn (str "unhandled okex event: " payload))))))
 
 (defn ct-r-fn [acc {:keys [instId ctVal ctType]}]

@@ -34,7 +34,7 @@
    ftx/init
    huobi/init
    huobi-inv/init
-   kraken-inv/init
+   #_kraken-inv/init
    okex/init])
 
 (defn -main [& args]
