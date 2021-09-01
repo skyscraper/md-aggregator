@@ -3,14 +3,14 @@
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [consume get-ct-sizes info-map inv-false
-                                         process subscribe ws-conn]]
+                                         inv-true process subscribe ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://aws.okex.com/api/v5/public")
 (def inst-ep "/instruments?instType=SWAP")
 (def url "wss://wsaws.okex.com:8443/ws/v5/public")
 (def exch :okex)
-(def tags [(str "exch" exch) inv-false])
+(def tags [(str "exch" exch)])
 (def ws-timeout 20000)
 (def info {})
 (def connection (atom nil))
@@ -22,12 +22,13 @@
 (def sub-base {:channel :trades})
 (def ct-size (atom {}))
 
-(defn normalize [{:keys [px sz side ts]} cts]
-  {:price (Double/parseDouble px)
-   :size (* (Double/parseDouble sz) cts)
-   :side (keyword side)
-   :time (Long/parseLong ts)
-   :source exch})
+(defn normalize [{:keys [px sz side ts]} cts ct-type]
+  (let [price (Double/parseDouble px)]
+    {:price price
+     :size (/ (* (Double/parseDouble sz) cts) (if (= :linear ct-type) 1.0 price))
+     :side (keyword side)
+     :time (Long/parseLong ts)
+     :source exch}))
 
 (defn handle [raw]
   (let [{:keys [event arg data] :as payload}
@@ -39,19 +40,23 @@
       (condp = (keyword channel)
         :trades (when instId
                   (let [kw-inst (keyword instId)
-                        cts (kw-inst @ct-size)
-                        trades (map #(normalize % cts) data)]
-                    (process trades tags (kw-inst info))))
+                        [cts ct-type] (kw-inst @ct-size)
+                        trades (map #(normalize % cts ct-type) data)
+                        extra-tag (if (= :linear ct-type) inv-false inv-true)]
+                    (process trades (conj tags extra-tag) (kw-inst info))))
         (log/warn (str "unhandled okex event: " payload))))))
 
 (defn ct-r-fn [acc {:keys [instId ctVal ctType]}]
   (let [k (keyword instId)]
-    (if (and (k info) (= :linear (keyword ctType)))
-      (assoc acc k (Double/parseDouble ctVal))
+    (if (k info)
+      (assoc acc k [(Double/parseDouble ctVal) (keyword ctType)])
       acc)))
 
 (defn rename [k]
   (keyword (str (name k) "-USDT-SWAP")))
+
+(defn rename-inverse [k]
+  (keyword (str (name k) "-USD-SWAP")))
 
 (defn connect! []
   (let [conn @(ws-conn exch url ws-props connect!)]
@@ -63,5 +68,6 @@
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
+  (alter-var-root #'info info-map rename-inverse trade-channels)
   (reset! ct-size (get-ct-sizes exch (str api-url inst-ep) :data ct-r-fn))
   (connect!))
