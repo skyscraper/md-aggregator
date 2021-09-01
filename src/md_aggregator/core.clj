@@ -3,6 +3,8 @@
   (:require [clojure.core.async :refer [<! go-loop]]
             [md-aggregator.binance :as binance]
             [md-aggregator.binance-inv :as binance-inv]
+            [md-aggregator.bybit :as bybit]
+            [md-aggregator.bybit-inv :as bybit-inv]
             [md-aggregator.deribit :as deribit]
             [md-aggregator.ftx :as ftx]
             [md-aggregator.huobi :as huobi]
@@ -30,11 +32,13 @@
 (def inits
   [binance/init
    binance-inv/init
+   bybit/init
+   bybit-inv/init
    deribit/init
    ftx/init
    huobi/init
    huobi-inv/init
-   #_kraken-inv/init
+   kraken-inv/init
    okex/init])
 
 (defn -main [& args]
