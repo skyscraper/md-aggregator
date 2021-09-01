@@ -48,4 +48,3 @@
     (init @trade-channels))
   (reset! nrepl-server (start-server :port 7888))
   (.await signal))
-

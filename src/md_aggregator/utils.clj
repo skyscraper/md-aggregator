@@ -1,7 +1,7 @@
 (ns md-aggregator.utils
   (:require [aleph.http :as http]
             [byte-streams :as bs]
-            [clojure.core.async :refer [<! chan go-loop timeout]]
+            [clojure.core.async :refer [<! >! chan go go-loop timeout]]
             [clojure.string :refer [lower-case upper-case]]
             [java-time :refer [instant zoned-date-time]]
             [jsonista.core :as json]
@@ -25,7 +25,7 @@
 ;; core.async
 (defn generate-channel-map [symbols]
   (reduce
-   #(assoc %1 (uc-kw %2) (chan 1000))
+   #(assoc %1 (uc-kw %2) (chan 10000))
    {}
    symbols))
 
@@ -54,6 +54,10 @@
       (fn [e]
         (log/error (name exch) "ws problem:" e)
         (connect-fn))))
+
+(defn subscribe [conn payloads]
+  (doseq [p payloads]
+    (s/put! conn (json/write-value-as-string p))))
 
 ;; consume
 (defn consume [exch conn ws-timeout handle-fn]
@@ -93,3 +97,15 @@
     (statsd/count :trade 1 tags)
     (statsd/count :notional amt (conj tags coin-tag (str side-str side)))
     (statsd/gauge price-gauge price tags)))
+
+;; process incoming market data and report stats
+(defn process-single [trade tags {:keys [channel] :as meta-info}]
+  (go
+    (when (and trade (>! channel trade))
+      (trade-stats trade tags meta-info))))
+
+(defn process [trades tags {:keys [channel] :as meta-info}]
+  (go-loop [vs (seq trades)]
+    (when (and vs (>! channel (first vs)))
+      (trade-stats (first vs) tags meta-info)
+      (recur (next vs)))))

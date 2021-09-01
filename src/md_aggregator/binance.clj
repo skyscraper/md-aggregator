@@ -1,10 +1,10 @@
 (ns md-aggregator.binance
-  (:require [clojure.core.async :refer [put!]]
-            [clojure.string :refer [join lower-case]]
+  (:require [clojure.string :refer [join lower-case]]
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-false process-single
+                                         ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://fstream.binance.com")
@@ -25,10 +25,7 @@
   (let [{:keys [s p q T m] :as payload} (:data (json/read-value raw json/keyword-keys-object-mapper))]
     (statsd/count :ws-msg 1 tags)
     (if s
-      (let [{:keys [channel] :as meta-info} ((keyword s) info)
-            trade (normalize p q m T)]
-        (put! channel trade)
-        (trade-stats trade tags meta-info))
+      (process-single (normalize p q m T) tags ((keyword s) info))
       (log/warn "unhandled binance message:" payload))))
 
 (defn rename [k]
@@ -49,4 +46,3 @@
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
   (connect!))
-

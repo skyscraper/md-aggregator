@@ -1,10 +1,10 @@
 (ns md-aggregator.binance-inv
-  (:require [clojure.core.async :refer [put!]]
-            [jsonista.core :as json]
+  (:require [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.binance :as binance]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume get-ct-sizes info-map inv-true trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume get-ct-sizes info-map inv-true
+                                         process-single ws-conn]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://dapi.binance.com")
@@ -22,12 +22,10 @@
     (statsd/count :ws-msg 1 tags)
     (if s
       (let [kw-sym (keyword s)
-            {:keys [channel] :as meta-info} (kw-sym info)
             cts (kw-sym @ct-size)
             {:keys [price] :as norm} (binance/normalize p q m T)
             trade (update norm :size #(/ (* % cts) price))]
-        (put! channel trade)
-        (trade-stats trade tags meta-info))
+        (process-single trade tags (kw-sym info)))
       (log/warn "unhandled binance-inv message:" payload))))
 
 (defn ct-r-fn [acc {:keys [symbol contractSize contractType]}]
@@ -49,4 +47,3 @@
   (alter-var-root #'info info-map rename trade-channels)
   (reset! ct-size (get-ct-sizes exch (str api-url ex-info-ep) :symbols ct-r-fn))
   (connect!))
-

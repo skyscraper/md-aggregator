@@ -1,10 +1,9 @@
 (ns md-aggregator.ftx
-  (:require [clojure.core.async :refer [>! go]]
-            [jsonista.core :as json]
+  (:require [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
             [md-aggregator.utils :refer [consume epoch info-map inv-false ping-loop
-                                         trade-stats ws-conn]]
+                                         process subscribe ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://ftx.com/ws/")
@@ -16,12 +15,7 @@
 (def ws-props {:max-frame-payload 131072})
 (def ping (json/write-value-as-string {:op :ping}))
 (def ping-interval 15000)
-
-(defn subscribe [conn markets]
-  (doseq [market markets]
-    (s/put! conn (json/write-value-as-string {:op :subscribe
-                                              :channel :trades
-                                              :market market}))))
+(def sub-base {:op :subscribe :channel :trades})
 
 (defn normalize [x]
   (-> (update x :time epoch)
@@ -33,12 +27,7 @@
         (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
     (condp = (keyword type)
-      :update (let [{:keys [channel] :as meta-info} ((keyword market) info)]
-                (go
-                  (doseq [x data
-                          :let [trade (normalize x)]]
-                    (>! channel trade)
-                    (trade-stats trade tags meta-info))))
+      :update (process (map normalize data) tags ((keyword market) info))
       :partial (log/warn (format "received partial event: %s" payload))
       :info (do (log/info (format "ftx info: %s %s" code msg))
                 (when (= code 20001)
@@ -58,10 +47,9 @@
     (reset! connection conn)
     (consume exch conn ws-timeout handle)
     (ping-loop conn ping-interval ping)
-    (subscribe conn (keys info))
+    (subscribe conn (map #(assoc sub-base :market %) (keys info)))
     (s/on-closed conn connect!)))
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
   (connect!))
-

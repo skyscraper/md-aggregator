@@ -1,31 +1,28 @@
 (ns md-aggregator.deribit
-  (:require [clojure.core.async :refer [>! go]]
-            [clojure.string :refer [includes? join]]
+  (:require [clojure.string :refer [includes? join]]
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-false trade-stats ws-conn]]
+            [md-aggregator.utils :refer [consume info-map inv-false process
+                                         subscribe ws-conn]]
             [taoensso.timbre :as log]))
 
 (def url "wss://www.deribit.com/ws/api/v2")
+(def api-test "public/test")
+(def api-hb "public/set_heartbeat")
+(def api-sub "public/subscribe")
 (def exch :deribit)
 (def tags [(str "exch" exch) inv-false])
 (def ws-timeout 60000)
 (def info {})
 (def connection (atom nil))
 (def ws-props {:max-frame-payload 131072})
+(def heartbeat-interval-sec 30)
+(def base "trades.%s-PERPETUAL.raw")
 
 (defn msg-base []
   {:jsonrpc "2.0"
    :id (System/currentTimeMillis)})
-
-(defn subscribe [conn channels]
-  (s/put! conn (json/write-value-as-string (assoc (msg-base)
-                                                  :method "public/set_heartbeat"
-                                                  :params {:interval 30})))
-  (s/put! conn (json/write-value-as-string (assoc (msg-base)
-                                                  :method "public/subscribe"
-                                                  :params {:channels channels}))))
 
 (defn normalize [{:keys [price amount direction timestamp liquidation]}]
   {:price price
@@ -42,18 +39,11 @@
     (if method
       (condp = (keyword method)
         :subscription
-        (let [{:keys [data]} params
-              {:keys [channel] :as meta-info}
-              ((keyword (:channel params)) info)]
-          (when channel
-            (go
-              (doseq [x data
-                      :let [trade (normalize x)]]
-                (>! channel trade)
-                (trade-stats trade tags meta-info)))))
+        (let [{:keys [data channel]} params]
+          (process (map normalize data) tags ((keyword channel) info)))
         :heartbeat
         (s/put! @connection (json/write-value-as-string (assoc (msg-base)
-                                                               :method "public/test"
+                                                               :method api-test
                                                                :params {})))
         (log/warn "unhandled deribit method" payload))
       (if result
@@ -62,16 +52,20 @@
         (log/warn "unhandled result:" payload)))))
 
 (defn rename [k]
-  (keyword (str "trades." (name k) "-PERPETUAL.raw")))
+  (keyword (format base (name k))))
 
 (defn connect! []
   (let [conn @(ws-conn exch url ws-props connect!)]
     (reset! connection conn)
     (consume exch conn ws-timeout handle)
-    (subscribe conn (keys info))
+    (subscribe conn [(assoc (msg-base)
+                            :method api-hb
+                            :params {:interval heartbeat-interval-sec})
+                     (assoc (msg-base)
+                            :method api-sub
+                            :params {:channels (keys info)})])
     (s/on-closed conn connect!)))
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
   (connect!))
-
