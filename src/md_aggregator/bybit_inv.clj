@@ -9,6 +9,7 @@
 (def url "wss://stream.bybit.com/realtime")
 (def exch :bybit-inv)
 (def tags [(str "exch" bybit/exch) inv-true])
+(def ws-props {:max-frame-payload 131072})
 (def ws-timeout 30000)
 (def info {})
 
@@ -38,4 +39,4 @@
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (connect! exch url nil ws-timeout handle (bybit/subscribe-msgs (keys info)) bybit/ping-params))
+  (connect! exch url ws-props ws-timeout handle (bybit/subscribe-msgs (keys info)) bybit/ping-params))

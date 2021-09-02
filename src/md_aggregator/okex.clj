@@ -10,13 +10,13 @@
 (def url "wss://wsaws.okex.com:8443/ws/v5/public")
 (def exch :okex)
 (def tags [(str "exch" exch)])
-(def ws-timeout 20000)
-(def info {})
 (def ws-props {:max-frame-payload 131072
                :compression? true
                :heartbeats {:send-after-idle 3e4
                             :payload "ping"
                             :timeout 3e4}})
+(def ws-timeout 20000)
+(def info {})
 (def sub-base {:channel :trades})
 (def ct-size (atom {}))
 

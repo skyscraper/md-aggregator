@@ -12,9 +12,9 @@
 (def url "wss://api.hbdm.vn/swap-ws")
 (def exch :huobi-inv)
 (def tags [(str "exch" huobi/exch) inv-true])
+(def ws-props {:max-frame-payload 131072})
 (def ws-timeout 20000)
 (def info {})
-(def ws-props {:max-frame-payload 131072})
 
 (defn handle [raw conn]
   (with-open [rdr (reader (GZIPInputStream. (bs/to-input-stream raw)))]

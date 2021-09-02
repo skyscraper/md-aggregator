@@ -49,8 +49,8 @@
 ;; ws
 (defn check-failure [x]
   (condp = x
-    :source-failure (Exception. "try-take failure")
-    :timeout-failure (Exception. "delivery timeout")
+    :source-failure (throw (Exception. "try-take failure"))
+    :timeout-failure (throw (Exception. "delivery timeout"))
     x))
 
 ;; ping

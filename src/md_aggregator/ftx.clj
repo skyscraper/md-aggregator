@@ -9,9 +9,9 @@
 (def url "wss://ftx.com/ws/")
 (def exch :ftx)
 (def tags [(str "exch" exch) inv-false])
+(def ws-props {:max-frame-payload 131072})
 (def ws-timeout 20000)
 (def info {})
-(def ws-props {:max-frame-payload 131072})
 (def ping-params {:interval 15000
                   :payload (json/write-value-as-string {:op :ping})})
 (def sub-base {:op :subscribe :channel :trades})

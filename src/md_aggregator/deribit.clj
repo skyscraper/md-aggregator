@@ -12,9 +12,9 @@
 (def api-sub "public/subscribe")
 (def exch :deribit)
 (def tags [(str "exch" exch) inv-false])
+(def ws-props {:max-frame-payload 131072})
 (def ws-timeout 60000)
 (def info {})
-(def ws-props {:max-frame-payload 131072})
 (def heartbeat-interval-sec 30)
 (def base "trades.%s-PERPETUAL.raw")
 
