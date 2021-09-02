@@ -1,9 +1,7 @@
 (ns md-aggregator.kraken-inv
   (:require [jsonista.core :as json]
-            [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-true process-single
-                                         subscribe ws-conn]]
+            [md-aggregator.utils :refer [connect! info-map inv-true process-single]]
             [taoensso.timbre :as log]))
 
 (def url "wss://futures.kraken.com/ws/v1")
@@ -11,7 +9,6 @@
 (def tags [(str "exch" exch) inv-true])
 (def ws-timeout 60000)
 (def info {})
-(def connection (atom nil))
 (def ws-props {:heartbeats {:send-after-idle 6e4
                             :timeout 6e4}})
 (def liq-types #{:liquidation :termination})
@@ -24,7 +21,7 @@
    :liquidation (if ((keyword type) liq-types) true false)
    :source exch})
 
-(defn handle [raw]
+(defn handle [raw _]
   (let [{:keys [event feed product_ids] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
@@ -47,13 +44,9 @@
 (defn rename [k]
   (keyword (str "PI_" (name (if (= :BTC k) :XBT k)) "USD")))
 
-(defn connect! []
-  (let [conn @(ws-conn exch url ws-props connect!)]
-    (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (subscribe conn [{:event :subscribe :feed :trade :product_ids (keys info)}])
-    (s/on-closed conn connect!)))
+(defn subscribe-msgs []
+  [{:event :subscribe :feed :trade :product_ids (keys info)}])
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (connect!))
+  (connect! exch url ws-props ws-timeout handle (subscribe-msgs) nil))

@@ -2,8 +2,8 @@
   (:require [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume epoch info-map inv-false ping-loop
-                                         process subscribe ws-conn]]
+            [md-aggregator.utils :refer [connect! epoch info-map inv-false
+                                         process]]
             [taoensso.timbre :as log]))
 
 (def url "wss://ftx.com/ws/")
@@ -11,10 +11,9 @@
 (def tags [(str "exch" exch) inv-false])
 (def ws-timeout 20000)
 (def info {})
-(def connection (atom nil))
 (def ws-props {:max-frame-payload 131072})
-(def ping (json/write-value-as-string {:op :ping}))
-(def ping-interval 15000)
+(def ping-params {:interval 15000
+                  :payload (json/write-value-as-string {:op :ping})})
 (def sub-base {:op :subscribe :channel :trades})
 
 (defn normalize [x]
@@ -22,7 +21,7 @@
       (update :side keyword)
       (assoc :source exch)))
 
-(defn handle [raw]
+(defn handle [raw conn]
   (let [{:keys [channel market type code msg data] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
@@ -32,7 +31,7 @@
       :info (do (log/info (format "ftx info: %s %s" code msg))
                 (when (= code 20001)
                   (log/info (name exch) "server requested us to reconnect...")
-                  (s/close! @connection))) ;; theoretically registered callback will fire
+                  (s/close! conn))) ;; theoretically registered callback will fire
       :subscribed (log/info (format "subscribed to %s %s" market channel))
       :unsubscribed (log/info (format "unsubscribed from %s %s" market channel))
       :error (log/error (format "ftx error: %s %s" code msg))
@@ -42,14 +41,9 @@
 (defn rename [k]
   (keyword (str (name k) "-PERP")))
 
-(defn connect! []
-  (let [conn @(ws-conn exch url ws-props connect!)]
-    (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (ping-loop conn ping-interval ping)
-    (subscribe conn (map #(assoc sub-base :market %) (keys info)))
-    (s/on-closed conn connect!)))
+(defn subscribe-msgs []
+  (map #(assoc sub-base :market %) (keys info)))
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (connect!))
+  (connect! exch url ws-props ws-timeout handle (subscribe-msgs) ping-params))

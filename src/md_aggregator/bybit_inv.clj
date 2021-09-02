@@ -1,11 +1,9 @@
 (ns md-aggregator.bybit-inv
   (:require [clojure.string :refer [join lower-case]]
             [jsonista.core :as json]
-            [manifold.stream :as s]
             [md-aggregator.bybit :as bybit]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-true ping-loop
-                                         process subscribe ws-conn]]
+            [md-aggregator.utils :refer [connect! info-map inv-true process]]
             [taoensso.timbre :as log]))
 
 (def url "wss://stream.bybit.com/realtime")
@@ -13,10 +11,6 @@
 (def tags [(str "exch" bybit/exch) inv-true])
 (def ws-timeout 30000)
 (def info {})
-(def connection (atom nil))
-(def ping (json/write-value-as-string {:op :ping}))
-(def ping-interval 30000)
-(def sub-base {:op :subscribe})
 
 (defn normalize [{:keys [price size trade_time_ms side]}]
   {:price (double price)
@@ -25,7 +19,7 @@
    :time trade_time_ms
    :source bybit/exch})
 
-(defn handle [raw]
+(defn handle [raw _]
   (let [{:keys [request success ret_msg topic data] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)]
     (statsd/count :ws-msg 1 tags)
@@ -42,14 +36,6 @@
 (defn rename [k]
   (keyword (format "trade.%sUSD" (name k))))
 
-(defn connect! []
-  (let [conn @(ws-conn exch url nil connect!)]
-    (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (ping-loop conn ping-interval ping)
-    (subscribe conn [(assoc sub-base :args (keys info))])
-    (s/on-closed conn connect!)))
-
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (connect!))
+  (connect! exch url nil ws-timeout handle (bybit/subscribe-msgs (keys info)) bybit/ping-params))

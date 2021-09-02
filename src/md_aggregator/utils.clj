@@ -47,28 +47,11 @@
   (.toEpochMilli (instant (zoned-date-time dt-str))))
 
 ;; ws
-(defn ws-conn [exch url props connect-fn]
-  (log/info "connecting to" (name exch) "...")
-  (d/catch
-      (http/websocket-client url (merge {:epoll? true} props))
-      (fn [e]
-        (log/error (name exch) "ws problem:" e)
-        (connect-fn))))
-
-(defn subscribe [conn payloads]
-  (doseq [p payloads]
-    (s/put! conn (json/write-value-as-string p))))
-
-;; consume
-(defn consume [exch conn ws-timeout handle-fn]
-  (go-loop []
-    (if-let [raw @(s/try-take! conn ws-timeout)]
-      (do
-        (handle-fn raw)
-        (recur))
-      (do
-        (log/error (format "Stopped receiving %s websocket data! Closing connection..." (name exch)))
-        (s/close! conn)))))
+(defn check-failure [x]
+  (condp = x
+    :source-failure (Exception. "try-take failure")
+    :timeout-failure (Exception. "delivery timeout")
+    x))
 
 ;; ping
 (defn ping-loop [conn interval payload]
@@ -76,6 +59,28 @@
     (<! (timeout interval))
     (when @(s/put! conn payload)
       (recur))))
+
+(defn connect! [exch url props ws-timeout handle-fn payloads
+                {:keys [interval payload] :as ping-params}]
+  (log/info "connecting to" (name exch) "...")
+  (->
+   (d/let-flow [conn (http/websocket-client url (merge {:epoll? true} props))
+                handle (fn [raw] (handle-fn raw conn))]
+     (when ping-params
+       (ping-loop conn interval payload))
+     (log/info "subscribing to feeds for " (name exch) "...")
+     (doseq [p payloads]
+       (s/put! conn (json/write-value-as-string p)))
+     (d/loop []
+       (d/chain
+        (s/try-take! conn :source-failure ws-timeout :timeout-failure)
+        check-failure
+        handle
+        (fn [_] (d/recur)))))
+   (d/catch
+       (fn [e]
+         (log/error (name exch) "ws problem:" e)
+         (connect! exch url props ws-timeout handle-fn payloads ping-params)))))
 
 ;; contract sizing
 (defn get-ct-sizes [exch url data-kw r-fn]

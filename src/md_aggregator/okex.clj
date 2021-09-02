@@ -1,9 +1,8 @@
 (ns md-aggregator.okex
   (:require [jsonista.core :as json]
-            [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume get-ct-sizes info-map inv-false
-                                         inv-true process subscribe ws-conn]]
+            [md-aggregator.utils :refer [connect! get-ct-sizes info-map inv-false
+                                         inv-true process]]
             [taoensso.timbre :as log]))
 
 (def api-url "https://aws.okex.com/api/v5/public")
@@ -13,7 +12,6 @@
 (def tags [(str "exch" exch)])
 (def ws-timeout 20000)
 (def info {})
-(def connection (atom nil))
 (def ws-props {:max-frame-payload 131072
                :compression? true
                :heartbeats {:send-after-idle 3e4
@@ -30,7 +28,7 @@
      :time (Long/parseLong ts)
      :source exch}))
 
-(defn handle [raw]
+(defn handle [raw _]
   (let [{:keys [event arg data] :as payload}
         (json/read-value raw json/keyword-keys-object-mapper)
         {:keys [channel instId]} arg]
@@ -58,16 +56,12 @@
 (defn rename-inverse [k]
   (keyword (str (name k) "-USD-SWAP")))
 
-(defn connect! []
-  (let [conn @(ws-conn exch url ws-props connect!)]
-    (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (subscribe conn [{:op :subscribe
-                      :args (mapv #(assoc sub-base :instId %) (keys info))}])
-    (s/on-closed conn connect!)))
+(defn subscribe-msgs []
+  [{:op :subscribe
+    :args (mapv #(assoc sub-base :instId %) (keys info))}])
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
   (alter-var-root #'info info-map rename-inverse trade-channels)
   (reset! ct-size (get-ct-sizes exch (str api-url inst-ep) :data ct-r-fn))
-  (connect!))
+  (connect! exch url ws-props ws-timeout handle (subscribe-msgs) nil))

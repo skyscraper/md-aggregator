@@ -4,8 +4,7 @@
             [jsonista.core :as json]
             [manifold.stream :as s]
             [md-aggregator.statsd :as statsd]
-            [md-aggregator.utils :refer [consume info-map inv-false process
-                                         subscribe ws-conn]]
+            [md-aggregator.utils :refer [connect! info-map inv-false process]]
             [taoensso.timbre :as log])
   (:import (java.util.zip GZIPInputStream)))
 
@@ -14,7 +13,6 @@
 (def tags [(str "exch" exch) inv-false])
 (def ws-timeout 20000)
 (def info {})
-(def connection (atom nil))
 (def ws-props {:max-frame-payload 131072})
 (def base "market.%s.trade.detail")
 
@@ -25,7 +23,7 @@
    :time ts
    :source exch})
 
-(defn handle [raw]
+(defn handle [raw conn]
   (with-open [rdr (reader (GZIPInputStream. (bs/to-input-stream raw)))]
     (let [{:keys [ch subbed status ping tick] :as payload}
           (json/read-value rdr json/keyword-keys-object-mapper)]
@@ -33,19 +31,15 @@
       (cond
         (some? ch) (process (map normalize (:data tick)) tags ((keyword ch) info))
         (some? subbed) (log/info subbed "subscription status:" status)
-        (some? ping) (s/put! @connection (json/write-value-as-string {:pong ping}))
+        (some? ping) (s/put! conn (json/write-value-as-string {:pong ping}))
         :else (log/warn "unhandled huobi message: " payload)))))
 
 (defn rename [k]
   (keyword (format base (str (name k) "-USDT"))))
 
-(defn connect! []
-  (let [conn @(ws-conn exch url ws-props connect!)]
-    (reset! connection conn)
-    (consume exch conn ws-timeout handle)
-    (subscribe conn (map #(hash-map :sub %) (keys info)))
-    (s/on-closed conn connect!)))
+(defn subscribe-msgs [xs]
+  (map #(hash-map :sub %) xs))
 
 (defn init [trade-channels]
   (alter-var-root #'info info-map rename trade-channels)
-  (connect!))
+  (connect! exch url ws-props ws-timeout handle (subscribe-msgs (keys info)) nil))
