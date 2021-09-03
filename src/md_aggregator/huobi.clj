@@ -11,7 +11,7 @@
 (def url "wss://api.hbdm.vn/linear-swap-ws")
 (def exch :huobi)
 (def tags [(str "exch" exch) inv-false])
-(def ws-props {:max-frame-payload 131072})
+(def ws-props {:max-frame-payload 262144})
 (def ws-timeout 20000)
 (def info {})
 (def base "market.%s.trade.detail")

@@ -68,7 +68,7 @@
                 handle (fn [raw] (handle-fn raw conn))]
      (when ping-params
        (ping-loop conn interval payload))
-     (log/info "subscribing to feeds for " (name exch) "...")
+     (log/info "subscribing to feeds for" (name exch) "...")
      (doseq [p payloads]
        (s/put! conn (json/write-value-as-string p)))
      (d/loop []

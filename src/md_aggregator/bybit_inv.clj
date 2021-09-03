@@ -9,7 +9,7 @@
 (def url "wss://stream.bybit.com/realtime")
 (def exch :bybit-inv)
 (def tags [(str "exch" bybit/exch) inv-true])
-(def ws-props {:max-frame-payload 131072})
+(def ws-props {:max-frame-payload 262144})
 (def ws-timeout 30000)
 (def info {})
 
