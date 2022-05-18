@@ -1,6 +1,6 @@
 # md-aggregator
 
-A Clojure library designed to ... well, that part is up to you.
+scratch project for aggregating crypto market data streams, doesn't do anything once trades are received...
 
 ## Usage
 
